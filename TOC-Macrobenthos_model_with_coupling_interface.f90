@@ -1,18 +1,18 @@
     program main
     use netcdf
-	parameter(im=3000,imax=10726,tm=4000,pi=3.14159265,time_steps1=20000,years_number=68,zmax=31)   ! imax=number of grid cells; time_steps1=initial iteration steps; years_number= number of years to simulate; zmax=depth range (cm) in sediment
-	intrinsic random_seed, random_number 
-	integer*4 i,j,m,n,k,t_step,loop,z0,time_steps,ii,year_loop,tag_index_lon(imax),tag_index_lat(imax),current_step,seed,om,hypo_tag(imax),count_num,count_step,t_day
-	real*4 w(imax,zmax),kv(imax,zmax),R1,R2,R3,adv_1(zmax),adv_2(zmax),adv_3(zmax),diff_1(zmax),diff_2(zmax),diff_3(zmax),poro(imax,zmax),delta_z,suspension_feeder(imax)
+    parameter(im=3000,imax=10726,tm=4000,pi=3.14159265,time_steps1=20000,years_number=68,zmax=31)   ! imax=number of grid cells; time_steps1=initial iteration steps; years_number= number of years to simulate; zmax=depth range (cm) in sediment
+    intrinsic random_seed, random_number 
+    integer*4 i,j,m,n,k,t_step,loop,z0,time_steps,ii,year_loop,tag_index_lon(imax),tag_index_lat(imax),current_step,seed,om,hypo_tag(imax),count_num,count_step,t_day
+    real*4 w(imax,zmax),kv(imax,zmax),R1,R2,R3,adv_1(zmax),adv_2(zmax),adv_3(zmax),diff_1(zmax),diff_2(zmax),diff_3(zmax),poro(imax,zmax),delta_z,suspension_feeder(imax)
     real*4 c1(imax,zmax,2),c2(imax,zmax,2),c3(imax,zmax,2),oc_pool_1,oc_pool_2,oc_pool_3,gamma(imax,3,2),pool1,pool2,pool1_degradation,x,y,bathy(imax)
-	real*4 bio_sum,bio_z0,erro1,erro2,erro3,erro4,oc_sum,toc_sum,bio_sum0,oc_sum0,dis,hypoxia_count(imax),hypo_area,hypo_area_2,deadzone_area,deadzone_area_2
-    real*4 xgrid(imax),ygrid(imax),biomass(imax,zmax,2),TOC(imax,zmax,2),toc0(imax),total_advection,total_degradation,de_1(30),de_2(30),de_3(30),total_uptake
+    real*4 bio_sum,bio_z0,erro1,erro2,erro3,erro4,oc_sum,toc_sum,bio_sum0,oc_sum0,dis,hypoxia_count(imax),hypo_area,hypo_area_2,deadzone_area,deadzone_area_2
+    real*4 xgrid(imax),ygrid(imax),biomass(imax,zmax,2),TOC(imax,zmax,2),toc0(imax),d50(imax),L1(imax),L2(imax),bulk_den(imax),total_advection,total_degradation,de_1(30),de_2(30),de_3(30),total_uptake
     real*4 f1(imax),f2(imax),f3(imax),total_biomass,smin,total_toc,total_oc1,total_toc_2,total_oc1_2,total_biomass_2,total_diffusion,dif_1(30),dif_2(30),dif_3(30)
     real*4 biomass_shallow_s,biomass_shallow_w,toc_shallow_s,toc_shallow_w,oc1_shallow_s,oc1_shallow_w,sus_max,biomass_norderei(4)
     real*4 diffusion_shallow,advection_shallow,degradation_shallow,hypo_shallow,uptake_shallow,deadzone_shallow,x_low(1634),y_low(1634),dis2
     real*4 biomass_apr,toc_apr,oc1_apr,biomass_50m_apr,toc_50m_apr,oc1_50m_apr,biomass_oct,toc_oct,oc1_oct,biomass_50m_oct,toc_50m_oct,oc1_50m_oct
     real*4 uptake(4),diffusion(4),advection(4),degradation(4),uptake_50m(4),diffusion_50m(4),advection_50m(4),degradation_50m(4)
-    real*4 check_point_x(4),check_point_y(4),kv_15  ! to print vertical profiles at four field points for paper
+    real*4 check_point_x(4),check_point_y(4),kv_15,wset
     CHARACTER*12 netcdf_file(68)
     character*14 result_toc_w(68),result_toc_s(68)
     character*13 result_z0_w(68),result_z0_s(68)
@@ -52,9 +52,9 @@
 
   ! To check the units attributes.
   character (len = *), parameter :: UNITS = "units"
-  character (len = *), parameter :: OC1_UNITS = "mgC/m3"   ! phyto biomass bottom
-  character (len = *), parameter :: OXY_UNITS = "ml/l" 
-  character (len = *), parameter :: TAU_UNITS = "N/m2"  ! undefined unit in ECOSMO output 
+  character (len = *), parameter :: OC1_UNITS = "mgC/m3"   ! plantonic detritus concentration near bottom
+  character (len = *), parameter :: OXY_UNITS = "ml/l"     ! oxygen level
+  character (len = *), parameter :: TAU_UNITS = "N/m2"     ! bottom shear stress
   character (len = *), parameter :: LAT_UNITS = "degrees_north"
   character (len = *), parameter :: LON_UNITS = "degrees_east"
   character (len = *), parameter :: DAY_UNITS = "days since 1948-1-1"   ! this must be different from each netcdf file
@@ -79,10 +79,18 @@
 !-------------------------------------------
    
 ! read initial TOC information!    
-   open(10,file='SNS_TOC_map.dat',action='read')   ! read intial TOC map of study area
+   open(10,file='TOC_map.dat',action='read')   ! read intial TOC map of study area
 
    do i=1,imax
    read(10,'(2f10.5,f10.3)')xgrid(i),ygrid(i),toc0(i)   ! TOC in %
+   enddo
+   
+   open(11,file='D50_map.dat',action='read')   ! read sediment map of study area
+   
+   do i=1,imax
+   read(11,'(2f10.5,f10.3)')xgrid(i),ygrid(i),d50(i)   ! D50 in m
+   
+   bulk_den(i)= 2-0.229/((d50(i)*100)**0.21)               ! sediment bulk density estimated from d50 based on Komura(1963)
    enddo
  
 !------------model initialization------  
@@ -95,12 +103,18 @@
 	 gamma(j,2,1)=0.  ! macrobenthic uptake coefficient for Pool_2
 	 gamma(j,3,1)=0.  ! macrobenthic uptake coefficient for Pool_3
      enddo  
-	 R1=20/365.        ! first-order mineralization rate constant of Pool_1 per day at z=0 cm   
+     L1(i)=amax1(0.015,1.33-1000000*(d50(i)**1.5))
+     L2(i)=amax1(0.02,0.78-100000*(d50(i)**1.5))
+     
+	enddo  
+	
+     R1=20/365.        ! first-order mineralization rate constant of Pool_1 per day at z=0 cm   
 	 R2=2/365.         ! first-order mineralization rate constant of Pool_2 per day at z=0 cm    
 	 R3=0.002/365.     ! first-order mineralization rate constant of Pool_3 per day at z=0 cm
-	
+	 
+	 wset=0.0001  ! default settling velocity of detritus (m/s) 
+	 
 	 sed_thickness=0.  ! accumulative sedimentation/erosion thickness (cm) 
-	enddo  
 
 !--------------------------------------  
 !-----computation for equilibrium distribution of TOC and biomass based on intial toc content, assuming constant rate and dominant Pool_3 !
@@ -187,8 +201,8 @@
     enddo
 
 !     
-!----------------updating Kv and biomass every few (=user defined) time steps 
-    if(t_step==2.or.mod(t_step,10).eq.1)then ! updating kv and biomass
+!----------------updating Kv and biomass every second time step 
+    if(t_step==2.or.mod(t_step,2).eq.1)then ! updating kv and biomass
      bio_sum=0.
      toc_sum=0.
      oc_sum=0.
@@ -205,7 +219,7 @@
      
       
      do i=1,zmax      
-       biomass(j,i,2)=1000.*(c1(j,i,2)/1.5+c2(j,i,2)/4.+c3(j,i,2)/25.)*exp((1-i)*0.11)*oc_sum/zmax/(0.05+toc0(j)*0.5+(0.3+toc0(j)*0.3)*exp((1-i)*0.22))
+       biomass(j,i,2)=1000.*(c1(j,i,2)/1.5+c2(j,i,2)/4.+c3(j,i,2)/25.)*exp((1-i)*0.11)*oc_sum/zmax/(L1(j)+L2(j)*exp((1-i)*0.22))
        kv(j,i)=0.22*(biomass(j,i,2)**1.334)/(1000.*(c1(j,i,2)/1.5+c2(j,i,2)/4.+c3(j,i,2)/25.))
        bio_sum=bio_sum+biomass(j,i,2)  
 
@@ -399,33 +413,39 @@ do year_loop=1,years_number
         
          count_step=1
          
-         f1(j)=toc0(j)/1.6*(0.01/365/0.14)   
+         f1(j)=toc0(j)/1.6*(0.01/365/0.14)    ! minimum value as default
          f2(j)=toc0(j)/1.6*(0.01/365/0.14)
-         f3(j)=toc0(j)/1.6*(1.30/365/0.14)	          
+         f3(j)=toc0(j)/1.6*(0.01/365/0.14)	          
           
          if(oc1_in(tag_index_lat(j),tag_index_lon(j),t_day).ge.0.)then   ! only for wet cells with organic detritus
-         
-         f1(j)=toc0(j)/1.6*(0.01/365/0.14)+(oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)/300.)*(0.15/365/0.14)
-         f2(j)=toc0(j)/1.6*(0.01/365/0.14)+(oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)/300.)*(0.2/365/0.14)  
+! convert OC deposition to volumetric concentration (%) depending on sediment bulk density         
+         f1(j)=f1(j)+0.33*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000./(bulk_den(j)*10000)       
+         f2(j)=f2(j)+0.45*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000./(bulk_den(j)*10000)
+         f3(j)=f3(j)+0.22*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000./(bulk_den(j)*10000)
 !----check whether deposition/erosion occurs according to bottom shear stress
          if(tau_in(tag_index_lat(j),tag_index_lon(j),t_day).gt.0.03.and.tau_in(tag_index_lat(j),tag_index_lon(j),t_day).lt.0.1)then    ! larger than threshold for deposition of organic detritus (0.03 N/m2) and less than threshold for erosion of sediment(0.1 N/m2)
-         f1(j)=toc0(j)/1.6*(0.01/365/0.14)+(f1(j)-toc0(j)/1.6*(0.01/365/0.14))*(0.1-tau_in(tag_index_lat(j),tag_index_lon(j),t_day))/0.07
-         f2(j)=toc0(j)/1.6*(0.01/365/0.14)+(f2(j)-toc0(j)/1.6*(0.01/365/0.14))*(0.1-tau_in(tag_index_lat(j),tag_index_lon(j),t_day))/0.07
+         f1(j)=f1(j)+0.33*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000./(bulk_den(j)*10000)*(0.1-tau_in(tag_index_lat(j),tag_index_lon(j),t_day))/0.07
+         f2(j)=f2(j)+0.45*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000./(bulk_den(j)*10000)*(0.1-tau_in(tag_index_lat(j),tag_index_lon(j),t_day))/0.07
+         f3(j)=f3(j)+0.22*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000./(bulk_den(j)*10000)*(0.1-tau_in(tag_index_lat(j),tag_index_lon(j),t_day))/0.07
          endif
           
          if(tau_in(tag_index_lat(j),tag_index_lon(j),t_day).ge.0.1)then    ! larger than threshold of erosion 
-          f1(j)=0.     
+         f1(j)=0.   
+         f2(j)=0.
+         f3(j)=0.   
          endif
         
          endif        
                   
 !-------calculate advection and diffusion
 
-        c1(j,1,2)=f1(j)    ! read inputs at current step
-        c2(j,1,2)=f2(j)
-        c3(j,1,2)=f3(j)
+        c1(j,1,2)=c1(j,1,2)+f1(j)    ! update OC content in the upper-most cell at each time step
+        c2(j,1,2)=c2(j,1,2)+f2(j)
+        c3(j,1,2)=c3(j,1,2)+f3(j)
 !     
-
+      do i=2,zmax-1 
+       w(j,i)=(0.2*0.001*oc1_in(tag_index_lat(j),tag_index_lon(j),t_day)*wset*86400/1000.)*exp((1-i)*0.012)    ! sedimentation rate
+      enddo
 !--------------solution of C1 at time step i---     
      do i=2,zmax-1  
        adv_1(i)=w(j,i)*(1-poro(j,i))*(c1(j,i,1)-c1(j,i-1,1))/delta_z+(w(j,i)*(1-poro(j,i))-w(j,i-1)*(1-poro(j,i-1)))*c1(j,i,1)/delta_z   !advection      
@@ -476,8 +496,8 @@ do year_loop=1,years_number
     enddo
 !-------------------------    
 
-!----------------updating Kv and biomass every few (=user defined) time steps
-    if(t_day==1.or.mod(t_day,10).eq.1)then 
+!----------------updating Kv and biomass every second time step
+    if(t_day==1.or.mod(t_day,2).eq.1)then 
      bio_sum=0.
      toc_sum=0.
      oc_sum=0.
@@ -494,7 +514,7 @@ do year_loop=1,years_number
      
       
      do i=1,zmax   
-       biomass(j,i,2)=1000.*(c1(j,i,2)/1.5+c2(j,i,2)/4.+c3(j,i,2)/25.)*exp((1-i)*0.11)*oc_sum/zmax/(0.05+toc0(j)*0.5+(0.3+toc0(j)*0.3)*exp((1-i)*0.22))
+       biomass(j,i,2)=1000.*(c1(j,i,2)/1.5+c2(j,i,2)/4.+c3(j,i,2)/25.)*exp((1-i)*0.11)*oc_sum/zmax/(L1(j)+L2(j)*exp((1-i)*0.22))
        kv(j,i)=0.22*(biomass(j,i,2)**1.334)/(1000.*(c1(j,i,2)/1.5+c2(j,i,2)/4.+c3(j,i,2)/25.))
       
        TOC(j,i,1)=1000.*(c1(j,i,2)+c2(j,i,2)+c3(j,i,2))
